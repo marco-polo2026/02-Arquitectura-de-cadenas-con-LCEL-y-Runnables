@@ -64,6 +64,7 @@ providers.py        Registro de proveedores, política de fallos y construcción
 main.py             Elige el proveedor, compone la cadena y la ejercita
 recovery_demo.py    Reintentos, fallbacks y timeouts contra un proveedor roto
 parallel_demo.py    RunnableParallel comparado con llamadas secuenciales
+sequential_demo.py  Pasos encadenados: lambda y RunnablePassthrough.assign
 ```
 
 `providers.py` sabe qué proveedores hay, cómo se construyen y qué hacer cuando
