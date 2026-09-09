@@ -10,6 +10,7 @@ from langchain_core.exceptions import (
 )
 from langchain_core.runnables import Runnable
 from langchain_openai import ChatOpenAI
+from pydantic import BaseModel, ValidationError
 
 load_dotenv()
 
@@ -38,7 +39,7 @@ PROVIDERS = {
     ),
 }
 
-WORTH_RETRYING = (ModelConnectionError, ModelTimeoutError)
+WORTH_RETRYING = (ModelConnectionError, ModelTimeoutError, ValidationError)
 
 WORTH_SWITCHING = (
     ModelAPIError,
@@ -48,14 +49,20 @@ WORTH_SWITCHING = (
 )
 
 
-def build(name: str) -> Runnable:
+def build(name: str, schema: type[BaseModel] | None = None) -> Runnable:
     model_class, model_kwargs = PROVIDERS[name]
-    return model_class(**model_kwargs).with_retry(
+    model = model_class(**model_kwargs)
+    if schema is not None:
+        model = model.with_structured_output(schema)
+    return model.with_retry(
         retry_if_exception_type=WORTH_RETRYING, stop_after_attempt=MAX_ATTEMPTS
     )
 
 
-def resilient(primary: str, backups: list[str]) -> Runnable:
-    return build(primary).with_fallbacks(
-        [build(backup) for backup in backups], exceptions_to_handle=WORTH_SWITCHING
+def resilient(
+    primary: str, backups: list[str], schema: type[BaseModel] | None = None
+) -> Runnable:
+    return build(primary, schema).with_fallbacks(
+        [build(backup, schema) for backup in backups],
+        exceptions_to_handle=WORTH_SWITCHING,
     )
