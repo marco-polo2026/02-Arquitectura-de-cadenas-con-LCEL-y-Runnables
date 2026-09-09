@@ -2,6 +2,7 @@ import asyncio
 import os
 import time
 
+from langchain_core.exceptions import ModelError
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
@@ -57,4 +58,7 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except ModelError as error:
+        raise SystemExit(f"{type(error).__name__}: {error}")
