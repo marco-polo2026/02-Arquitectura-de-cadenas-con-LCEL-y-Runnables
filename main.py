@@ -1,39 +1,59 @@
 import asyncio
 import os
+import time
 
-from dotenv import load_dotenv
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
 
-from llm_client.exceptions import LLMError
-from llm_client.manager import AsyncLLMManager
-from llm_client.schemas import ChatMessage, ModelConfig
+from providers import PROVIDERS, resilient
 
-load_dotenv()
+ANSWER_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        ("system", "Respondé en una sola oración, en español."),
+        ("human", "{question}"),
+    ]
+)
 
-QUESTION = "¿Qué es la entropía? Respondé en una oración."
+QUESTION = "¿Qué es la entropía?"
 
-DEFAULT_MODELS = {"openai": "gpt-4o-mini", "anthropic": "claude-haiku-4-5"}
+QUESTIONS = [
+    "¿Qué es un agujero negro?",
+    "¿Qué es el ADN?",
+    "¿Qué es la fotosíntesis?",
+]
+
+provider = os.getenv("LLM_PROVIDER", "openai")
+
+backup_names = [name for name in PROVIDERS if name != provider]
+
+model = resilient(provider, backup_names)
+
+chain = ANSWER_PROMPT | model | StrOutputParser()
 
 
 async def main() -> None:
-    manager = AsyncLLMManager()
-    config = ModelConfig(
-        model=os.getenv("LLM_MODEL") or DEFAULT_MODELS[manager.provider]
-    )
-    messages = [ChatMessage(role="user", content=QUESTION)]
+    print(f"provider: {provider} | backups: {backup_names}")
 
-    print(f"provider: {manager.provider} | model: {config.model}")
+    print("\n=== ainvoke ===")
+    print(await chain.ainvoke({"question": QUESTION}))
 
-    print("\n=== generate ===")
-    response = await manager.generate(messages, config)
-    print(response.error or response.content)
+    print("\n=== astream ===")
+    async for chunk in chain.astream({"question": QUESTION}):
+        print(chunk, end="", flush=True)
+    print()
 
-    print("\n=== stream ===")
-    try:
-        async for token in manager.stream(messages, config):
-            print(token, end="", flush=True)
-        print()
-    except LLMError as error:
-        print(error)
+    print("\n=== one by one ===")
+    start = time.monotonic()
+    for question in QUESTIONS:
+        await chain.ainvoke({"question": question})
+    print(f"{time.monotonic() - start:.1f}s")
+
+    print("\n=== abatch ===")
+    start = time.monotonic()
+    answers = await chain.abatch([{"question": question} for question in QUESTIONS])
+    print(f"{time.monotonic() - start:.1f}s")
+    for answer in answers:
+        print(answer)
 
 
 if __name__ == "__main__":
